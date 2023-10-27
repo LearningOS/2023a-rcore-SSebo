@@ -58,10 +58,11 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
     trace!("kernel: sys_task_info");
 
     unsafe {
+        let time = (get_time_us() - get_current_start_time()) / 1000;
         *ti = TaskInfo {
             status: get_current_status(),
             syscall_times: get_syscall_times(),
-            time: get_time_us() - get_current_start_time() / 1000,
+            time,
         };
     }
 
