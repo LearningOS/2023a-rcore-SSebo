@@ -190,6 +190,20 @@ impl TaskManager {
         let current = inner.current_task;
         inner.tasks[current].start_time
     }
+
+    fn mmap_current_task(&self, start: usize, len: usize, prot: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let task = &mut (inner.tasks[current]);
+        task.memory_set.mmap(start, len, prot)
+    }
+
+    fn munmap_current_task(&self, start: usize, len: usize) -> isize {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let task = &mut (inner.tasks[current]);
+        task.memory_set.munmap(start, len)
+    }
 }
 
 /// Run the first task in task list.
@@ -258,4 +272,14 @@ pub fn get_current_status() -> TaskStatus {
 /// Get current task start time
 pub fn get_current_start_time() -> usize {
     TASK_MANAGER.get_current_start_time()
+}
+
+/// Map memory to current task
+pub fn mmap_current_task(start: usize, len: usize, prot: usize) -> isize {
+    TASK_MANAGER.mmap_current_task(start, len, prot)
+}
+
+/// Unmap memory to current task
+pub fn munmap_current_task(start: usize, len: usize) -> isize {
+    TASK_MANAGER.munmap_current_task(start, len)
 }
