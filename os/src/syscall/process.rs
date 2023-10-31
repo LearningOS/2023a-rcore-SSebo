@@ -8,7 +8,7 @@ use crate::{
     task::{
         add_task, current_start_time, current_status, current_task, current_user_token,
         exit_current_and_run_next, mmap_current_task, munmap_current_task,
-        suspend_current_and_run_next, syscall_times, TaskStatus,
+        suspend_current_and_run_next, syscall_times, TaskControlBlock, TaskStatus,
     },
     timer::get_time_us,
 };
@@ -190,14 +190,34 @@ pub fn sys_sbrk(size: i32) -> isize {
     }
 }
 
-/// YOUR JOB: Implement spawn.
 /// HINT: fork + exec =/= spawn
-pub fn sys_spawn(_path: *const u8) -> isize {
+pub fn sys_spawn(path: *const u8) -> isize {
     trace!(
         "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
         current_task().unwrap().pid.0
     );
-    -1
+
+    let token = current_user_token();
+    let path = translated_str(token, path);
+    if let Some(data) = get_app_data_by_name(path.as_str()) {
+        let child_task = Arc::new(TaskControlBlock::new(data));
+        let mut child_inner = child_task.inner_exclusive_access();
+        let parent_task = current_task().unwrap();
+        let mut parent_inner = parent_task.inner_exclusive_access();
+
+        child_inner.parent = Some(Arc::downgrade(&parent_task));
+        parent_inner.children.push(child_task.clone());
+
+        drop(child_inner);
+        drop(parent_inner);
+
+        let new_pid = child_task.pid.0;
+        // add new task to scheduler
+        add_task(child_task);
+        new_pid as isize
+    } else {
+        -1
+    }
 }
 
 // YOUR JOB: Set task priority.
