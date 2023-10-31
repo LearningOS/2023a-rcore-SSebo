@@ -7,8 +7,8 @@
 use super::__switch;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
-use crate::sync::UPSafeCell;
-use crate::trap::TrapContext;
+use crate::{config::MAX_SYSCALL_NUM, sync::UPSafeCell};
+use crate::{timer::get_time_us, trap::TrapContext};
 use alloc::sync::Arc;
 use lazy_static::*;
 
@@ -44,6 +44,42 @@ impl Processor {
     pub fn current(&self) -> Option<Arc<TaskControlBlock>> {
         self.current.as_ref().map(Arc::clone)
     }
+
+    /// Map virtual memory address to physical memory
+    pub fn mmap_current_task(&self, start: usize, len: usize, prot: usize) -> isize {
+        match &self.current {
+            None => -1,
+            Some(task) => task.mmap(start, len, prot),
+        }
+    }
+
+    /// Unmap virtual memory address to physical memory
+    pub fn munmap_current_task(&self, start: usize, len: usize) -> isize {
+        match &self.current {
+            None => -1,
+            Some(task) => task.munmap(start, len),
+        }
+    }
+
+    /// Get current task status
+    pub fn current_status(&self) -> TaskStatus {
+        self.current().unwrap().task_status()
+    }
+
+    /// Get current syscall times
+    pub fn syscall_times(&self) -> [u32; MAX_SYSCALL_NUM] {
+        self.current().unwrap().syscall_times()
+    }
+
+    /// Add syscall times
+    pub fn add_syscall_times(&self, syscall_id: usize) {
+        self.current().unwrap().add_syscall_times(syscall_id)
+    }
+
+    /// Get current task start time
+    pub fn start_time(&self) -> usize {
+        self.current().unwrap().start_time()
+    }
 }
 
 lazy_static! {
@@ -61,6 +97,9 @@ pub fn run_tasks() {
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
+            if task_inner.start_time == 0 {
+                task_inner.start_time = get_time_us();
+            }
             // release coming task_inner manually
             drop(task_inner);
             // release coming task TCB manually
@@ -108,4 +147,36 @@ pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     unsafe {
         __switch(switched_task_cx_ptr, idle_task_cx_ptr);
     }
+}
+
+/// Map virtual memory address to physical memory
+pub fn mmap_current_task(start: usize, len: usize, prot: usize) -> isize {
+    PROCESSOR
+        .exclusive_access()
+        .mmap_current_task(start, len, prot)
+}
+
+/// Unmap virtual memory address to physical memory
+pub fn munmap_current_task(start: usize, len: usize) -> isize {
+    PROCESSOR.exclusive_access().munmap_current_task(start, len)
+}
+
+/// Get current task status
+pub fn current_status() -> TaskStatus {
+    PROCESSOR.exclusive_access().current_status()
+}
+
+/// Get current task syscall times
+pub fn syscall_times() -> [u32; MAX_SYSCALL_NUM] {
+    PROCESSOR.exclusive_access().syscall_times()
+}
+
+/// Get current task start time
+pub fn current_start_time() -> usize {
+    PROCESSOR.exclusive_access().start_time()
+}
+
+/// Add syscall time to current task
+pub fn add_syscall_times(syscall_id: usize) {
+    PROCESSOR.exclusive_access().add_syscall_times(syscall_id)
 }
